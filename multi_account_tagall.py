@@ -109,8 +109,12 @@ def load_account_configs():
     return configs
 
 
+# (label, chat_id) -> True matlab "is chat me is account ki tagging cancel kar do"
+cancel_flags = {}
+
+
 def attach_tagall_handler(client, label):
-    """Is account ke client par /tagall command attach karta hai."""
+    """Is account ke client par /tagall aur /canceltag commands attach karta hai."""
 
     @client.on(events.NewMessage(pattern=r"^/tagall(?:\s+(.*))?$"))
     async def tagall_handler(event):
@@ -121,6 +125,8 @@ def attach_tagall_handler(client, label):
         extra_text = match.strip() if match else "Good Morning!"
 
         chat = await event.get_chat()
+        key = (label, chat.id)
+        cancel_flags[key] = False  # is run ke liye cancel-flag reset karo
 
         try:
             participants = await client.get_participants(chat, aggressive=True)
@@ -135,6 +141,10 @@ def attach_tagall_handler(client, label):
         first_message = True
 
         for user in participants:
+            if cancel_flags.get(key):
+                await event.reply(f"[{label}] Tagging /canceltag se rok di gayi.")
+                break
+
             if user.bot:
                 continue
 
@@ -154,8 +164,10 @@ def attach_tagall_handler(client, label):
             mention = f"[{name}](tg://user?id={user.id})"
 
             # Har insaan ko ALAG message me tag karo (ek-ek karke),
-            # jaisa Termux me hota tha
-            text = f"{extra_text}\n{mention}" if first_message else mention
+            # jaisa Termux me hota tha - aur har message me wahi custom
+            # text (jaise "Good Morning!" ya jo bhi /tagall ke baad likha)
+            # bhi shamil rahega
+            text = f"{extra_text}\n{mention}"
             first_message = False
 
             try:
@@ -164,6 +176,22 @@ def attach_tagall_handler(client, label):
                 await asyncio.sleep(e.seconds)
                 await client.send_message(chat.id, text, parse_mode="md")
             await asyncio.sleep(1.5)
+        else:
+            cancel_flags.pop(key, None)  # poora chal gaya, cleanup kar do
+
+    @client.on(events.NewMessage(pattern=r"^/canceltag$"))
+    async def canceltag_handler(event):
+        if not event.is_group:
+            return
+
+        chat = await event.get_chat()
+        key = (label, chat.id)
+
+        if key in cancel_flags and not cancel_flags[key]:
+            cancel_flags[key] = True
+            await event.reply(f"[{label}] Tagging rok raha hoon...")
+        else:
+            await event.reply(f"[{label}] Abhi koi tagging chal nahi rahi hai.")
 
 
 async def start_account(num):
