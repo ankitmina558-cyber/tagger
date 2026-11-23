@@ -132,25 +132,32 @@ def attach_tagall_handler(client, label):
             await event.reply(f"[{label}] Koi members nahi mile.")
             return
 
-        batch_size = 5
-        mention_batches = []
-        current_batch = []
+        first_message = True
 
         for user in participants:
             if user.bot:
                 continue
-            name = user.first_name or "User"
+
+            # Naam nikalna - pehle jo mila hai wo use karo, agar khaali hai
+            # (Render/sleep ke baad aksar hota hai) to poora entity fetch
+            # karke asli naam dhoondo - tabhi "User" fallback use hoga.
+            name = user.first_name
+            if not name:
+                try:
+                    full_user = await client.get_entity(user.id)
+                    name = full_user.first_name or full_user.username
+                except Exception:
+                    name = user.username
+            if not name:
+                name = "User"
+
             mention = f"[{name}](tg://user?id={user.id})"
-            current_batch.append(mention)
-            if len(current_batch) == batch_size:
-                mention_batches.append(current_batch)
-                current_batch = []
 
-        if current_batch:
-            mention_batches.append(current_batch)
+            # Har insaan ko ALAG message me tag karo (ek-ek karke),
+            # jaisa Termux me hota tha
+            text = f"{extra_text}\n{mention}" if first_message else mention
+            first_message = False
 
-        for batch in mention_batches:
-            text = f"{extra_text}\n" + " ".join(batch)
             try:
                 await client.send_message(chat.id, text, parse_mode="md")
             except FloodWaitError as e:
